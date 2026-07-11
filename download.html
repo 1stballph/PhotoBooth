@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Download your photos</title>
+<style>
+  :root{
+    --bg:#F4F6F8; --surface:#FFFFFF; --ink:#232A35; --muted:#7A8494;
+    --line:#E3E8EE; --primary:#5B5BD6; --primary-dark:#4747B8;
+    --success:#12A150; --danger:#E5484D; --radius:18px;
+    --shadow:0 10px 30px rgba(35,42,53,.10);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Avenir Next','Segoe UI',system-ui,sans-serif;
+    background:var(--bg);color:var(--ink);min-height:100vh;padding:20px 16px 60px}
+  .wrap{max-width:640px;margin:0 auto}
+  .icon{width:1.2em;height:1.2em;stroke:currentColor;fill:none;stroke-width:2.2;
+    stroke-linecap:round;stroke-linejoin:round;vertical-align:-0.22em}
+  h1{font-size:24px;display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:4px}
+  h1 .icon{color:var(--primary);width:26px;height:26px}
+  .sub{text-align:center;color:var(--muted);font-weight:600;font-size:15px;margin-bottom:22px}
+  .pin-entry{background:var(--surface);border-radius:var(--radius);padding:22px;
+    box-shadow:var(--shadow);text-align:center;margin-bottom:22px}
+  .pin-entry input{
+    width:220px;padding:12px;font-size:26px;font-weight:800;letter-spacing:8px;
+    text-align:center;border:2px solid var(--line);border-radius:12px;
+    font-family:inherit;color:var(--ink);outline:none}
+  .pin-entry input:focus{border-color:var(--primary)}
+  .btn{display:inline-flex;align-items:center;gap:8px;justify-content:center;border:none;
+    border-radius:12px;cursor:pointer;font-family:inherit;font-weight:700;font-size:16px;
+    padding:12px 24px;color:#fff;background:var(--primary);margin-top:14px;
+    box-shadow:0 4px 14px rgba(91,91,214,.35);text-decoration:none}
+  .btn:hover{background:var(--primary-dark)}
+  .btn.dl{background:var(--success);box-shadow:0 4px 12px rgba(18,161,80,.3);
+    margin-top:0;font-size:15px;padding:11px 20px}
+  .msg{margin-top:12px;color:var(--muted);font-weight:600;font-size:14px;min-height:20px}
+  .msg.err{color:var(--danger)}
+  .card{background:var(--surface);border-radius:var(--radius);overflow:hidden;
+    box-shadow:var(--shadow);margin-bottom:18px}
+  .card img{width:100%;display:block;background:#EEF1F5;min-height:120px}
+  .card .row{display:flex;align-items:center;justify-content:space-between;
+    padding:14px 16px;gap:10px}
+  .card .lbl{font-weight:700;font-size:16px}
+  .spinner{width:34px;height:34px;border:4px solid var(--line);border-top-color:var(--primary);
+    border-radius:50%;margin:30px auto;animation:spin 1s linear infinite;display:none}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <g id="i-camera"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></g>
+  <g id="i-download"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></g>
+  <g id="i-key"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3L21 2M16 7l3 3"/></g>
+</defs></svg>
+
+<div class="wrap">
+  <h1><svg class="icon"><use href="#i-camera"/></svg> <span id="evTitle">Photo Booth</span></h1>
+  <p class="sub">Enter your 6-digit PIN to view and download your pictures</p>
+
+  <div class="pin-entry">
+    <div><svg class="icon" style="color:var(--primary);width:22px;height:22px"><use href="#i-key"/></svg></div>
+    <input id="pinInput" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="123456">
+    <br>
+    <button class="btn" onclick="loadPhotos()">
+      <svg class="icon"><use href="#i-download"/></svg> View my photos
+    </button>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <div class="spinner" id="spin"></div>
+  <div id="gallery"></div>
+</div>
+
+<script>
+/* ============================================================
+ * PASTE YOUR APPS SCRIPT WEB APP URL HERE (ends with /exec)
+ * Must be the SAME URL as in index.html
+ * ============================================================ */
+const API_URL = 'PASTE_YOUR_APPS_SCRIPT_EXEC_URL_HERE';
+
+async function api(action, payload){
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(Object.assign({ action: action }, payload || {}))
+  });
+  const j = await res.json();
+  if (!j.ok) throw new Error(j.error || 'Server error');
+  return j.data;
+}
+
+function loadPhotos(){
+  const pin = document.getElementById('pinInput').value.replace(/\D/g,'');
+  const msg = document.getElementById('msg');
+  msg.className = 'msg'; msg.textContent = '';
+  if (pin.length !== 6){ msg.className='msg err'; msg.textContent='Please enter all 6 digits.'; return; }
+  document.getElementById('spin').style.display = 'block';
+  document.getElementById('gallery').innerHTML = '';
+
+  api('getPhotosByPin', { pin: pin })
+    .then(res => {
+      document.getElementById('spin').style.display = 'none';
+      if (!res.ok){ msg.className='msg err'; msg.textContent = res.message; return; }
+      document.getElementById('evTitle').textContent = res.eventName;
+      msg.textContent = res.items.length + ' pictures found — tap Download to save each one.';
+      const g = document.getElementById('gallery');
+      res.items.forEach(it => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML =
+          '<img src="' + it.url + '" loading="lazy" alt="' + it.label + '">' +
+          '<div class="row">' +
+            '<span class="lbl">' + it.label + '</span>' +
+            '<a class="btn dl" href="' + it.downloadUrl + '" target="_blank" rel="noopener">' +
+              '<svg class="icon"><use href="#i-download"/></svg> Download' +
+            '</a>' +
+          '</div>';
+        g.appendChild(card);
+      });
+    })
+    .catch(err => {
+      document.getElementById('spin').style.display = 'none';
+      msg.className = 'msg err';
+      msg.textContent = 'Error: ' + err.message;
+    });
+}
+
+// Auto-fill + auto-load when arriving via the QR code (?pin=123456)
+const urlPin = new URLSearchParams(window.location.search).get('pin') || '';
+if (/^\d{6}$/.test(urlPin)){
+  document.getElementById('pinInput').value = urlPin;
+  loadPhotos();
+}
+document.getElementById('pinInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') loadPhotos();
+});
+</script>
+</body>
+</html>
