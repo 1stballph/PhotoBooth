@@ -85,6 +85,8 @@
     background:linear-gradient(transparent,rgba(20,24,32,.72));
     font-size:20px;font-weight:700;color:#fff;
   }
+  .bgstate{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);
+    font-weight:600;font-size:14px;text-align:center;padding:14px;line-height:1.4}
   .bg-card.selected{border-color:var(--primary)}
   .bg-card.selected .checkmark{display:grid}
   .checkmark{
@@ -104,7 +106,9 @@
   .layout-card svg.preview{width:100%;height:auto;display:block;margin-bottom:12px}
   .layout-card .lname{font-size:14px;font-weight:700;color:var(--ink)}
   .lslot{fill:#C9CFF7}.lbg{fill:#F4F6F8;stroke:#E3E8EE;stroke-width:2}
+  .lbgslot{fill:#F7D9A6;stroke:#F5A524;stroke-width:2;stroke-dasharray:5 4}
   .layout-card.selected .lslot{fill:var(--primary)}
+  .layout-card.selected .lbgslot{fill:var(--accent);stroke:var(--accent)}
 
   /* ============ CAPTURE ============ */
   .cap-body{flex:1;display:flex;gap:18px;min-height:0}
@@ -250,7 +254,8 @@
   <div class="topbar">
     <div class="brand"><svg class="icon"><use href="#i-camera"/></svg>
       <div><span class="bt">Aranas Studio Photo Booth</span><span class="ev evName"></span></div></div>
-    <div class="stepchip"><svg class="icon"><use href="#i-grid"/></svg>Step 2 · Layout (4 shots)</div>
+    <div class="stepchip"><svg class="icon"><use href="#i-grid"/></svg>Step 2 · Layout (4 shots)
+      <b id="orientChip" style="color:var(--primary);margin-left:6px">Landscape print</b></div>
   </div>
   <div class="layout-grid" id="layoutGrid"></div>
   <div style="display:flex;justify-content:space-between;margin-top:14px">
@@ -397,24 +402,78 @@ let state = { bg:null, bgImg:null, layout:null, shots:[null,null,null,null], nex
               sessionId:null, saving:false, pinOk:false };
 let stream = null;
 
-/* ================= 5 LAYOUTS (2100x1500 = 5R LANDSCAPE @300dpi) ================= */
+/* ================= LAYOUTS =================
+ * Landscape print = 2100 x 1500 (5R landscape @300dpi)
+ * Portrait  print = 1500 x 2100 (5R portrait  @300dpi)
+ * Each layout carries slot coordinates for BOTH orientations. */
+const CANVAS = {
+  landscape: { W: 2100, H: 1500 },
+  portrait:  { W: 1500, H: 2100 },
+};
+
 const LAYOUTS = [
-  { id:'grid',   name:'Classic Grid 2×2',
+  { id:'grid', name:'Classic Grid 2×2',
     slots:[[110,90,920,610],[1070,90,920,610],[110,730,920,610],[1070,730,920,610]],
-    title:{x:1050,y:1448,size:64,align:'center'} },
+    title:{x:1050,y:1448,size:64,align:'center'},
+    portrait:{
+      slots:[[90,90,630,885],[780,90,630,885],[90,1035,630,885],[780,1035,630,885]],
+      title:{x:750,y:2020,size:64,align:'center'} } },
+
   { id:'mosaic', name:'Photo Mosaic',
     slots:[[740,520,1280,810],[80,80,620,1250],[740,80,620,400],[1400,80,620,400]],
-    title:{x:1050,y:1444,size:52,align:'center'} },
-  { id:'film',   name:'Filmstrip Stack',
+    title:{x:1050,y:1444,size:52,align:'center'},
+    portrait:{
+      slots:[[90,90,1320,1100],[90,1230,420,680],[540,1230,420,680],[990,1230,420,680]],
+      title:{x:750,y:2020,size:52,align:'center'} } },
+
+  { id:'film', name:'Filmstrip Stack',
     slots:[[150,70,1800,310],[150,405,1800,310],[150,740,1800,310],[150,1075,1800,310]],
-    title:{x:1050,y:1465,size:56,align:'center'} },
-  { id:'hero',   name:'Big Shot + 3',
+    title:{x:1050,y:1465,size:56,align:'center'},
+    portrait:{
+      slots:[[100,100,1300,426],[100,561,1300,426],[100,1022,1300,426],[100,1483,1300,426]],
+      title:{x:750,y:2020,size:56,align:'center'} } },
+
+  { id:'hero', name:'Big Shot + 3',
     slots:[[90,90,1220,1230],[1360,90,650,430],[1360,550,650,430],[1360,1010,650,400]],
-    title:{x:700,y:1430,size:64,align:'center'} },
+    title:{x:700,y:1430,size:64,align:'center'},
+    portrait:{
+      slots:[[90,90,1320,1150],[90,1290,420,560],[540,1290,420,560],[990,1290,420,560]],
+      title:{x:750,y:1990,size:64,align:'center'} } },
+
   { id:'collage', name:'Wedding Collage',
     slots:[[150,30,340,340],[270,370,340,340],[150,710,340,340],[270,1050,340,340]],
-    title:{x:1400,y:1200,size:110,align:'center',script:true}, polaroid:true },
+    title:{x:1400,y:1200,size:110,align:'center',script:true}, polaroid:true,
+    portrait:{
+      slots:[[120,120,380,380],[260,560,380,380],[120,1000,380,380],[260,1440,380,380]],
+      title:{x:1000,y:1930,size:100,align:'center',script:true} } },
+
+  { id:'framed', name:'Framed Collage',
+    /* bgSlot = the background image gets its OWN cell (the big panel);
+       slots  = the 4 booth shots. White mat, no full-bleed background. */
+    bgSlot:[110,110,1030,720],
+    slots:[[1160,110,830,350],[1160,480,830,350],[110,850,930,450],[1060,850,930,450]],
+    title:{x:1050,y:1420,size:58,align:'center'}, mat:'#FFFFFF',
+    portrait:{
+      bgSlot:[110,130,700,1000],
+      slots:[[830,130,560,490],[830,640,560,490],[110,1150,630,680],[760,1150,630,680]],
+      title:{x:750,y:1950,size:64,align:'center'} } },
 ];
+
+/** Portrait when the chosen background says so, otherwise landscape. */
+function orientation(){
+  return (state.bg && state.bg.orientation === 'PORTRAIT') ? 'portrait' : 'landscape';
+}
+/** Slots, title and canvas size for a layout in the current orientation. */
+function geom(L, mode){
+  mode = mode || orientation();
+  const src = (mode === 'portrait' && L.portrait) ? L.portrait : L;
+  return {
+    W: CANVAS[mode].W, H: CANVAS[mode].H,
+    slots: src.slots, title: src.title, polaroid: !!L.polaroid,
+    bgSlot: src.bgSlot || null,
+    mat: L.mat || null,
+  };
+}
 
 /* ================= INIT ================= */
 api('getConfig')
@@ -432,39 +491,68 @@ api('getConfig')
       + err.message + '. Check API_URL at the top of index.html.</p>';
   });
 
-/* Drive links often block CORS; googleusercontent serves the same file with CORS enabled */
-function normalizeUrl(url){
-  const m = String(url).match(/(?:id=|\/d\/)([-\w]{25,})/);
-  return m ? 'https://lh3.googleusercontent.com/d/' + m[1] + '=w1600' : url;
-}
+/* Backgrounds come through the API as data URLs: no CORS, no canvas tainting. */
+const BG_CACHE = {};
 
 function buildCarousel(){
   const c = document.getElementById('bgCarousel');
   c.innerHTML = '';
+  if (!CFG.backgrounds.length){
+    c.innerHTML = '<p style="margin:auto;color:var(--muted)">No backgrounds found — add rows to the Backgrounds sheet.</p>';
+    return;
+  }
   CFG.backgrounds.forEach(bg => {
-    bg.url = normalizeUrl(bg.url);
     const card = document.createElement('div');
     card.className = 'bg-card';
     card.innerHTML =
-      `<img src="${bg.url}" crossorigin="anonymous">
-       <div class="checkmark"><svg class="icon" style="width:24px;height:24px"><use href="#i-check"/></svg></div>
-       <div class="label">${bg.name}</div>`;
+      '<img alt="">' +
+      '<div class="checkmark"><svg class="icon" style="width:24px;height:24px"><use href="#i-check"/></svg></div>' +
+      '<div class="label">' + bg.name + '</div>' +
+      '<div class="bgstate">Loading…</div>';
     card.onclick = () => selectBg(bg, card);
     c.appendChild(card);
+    loadBgImage(bg, card);
   });
-  if (!CFG.backgrounds.length)
-    c.innerHTML = '<p style="margin:auto;color:var(--muted)">No backgrounds found — add rows to the Backgrounds sheet.</p>';
 }
+
+function loadBgImage(bg, card){
+  const imgEl = card.querySelector('img');
+  const stateEl = card.querySelector('.bgstate');
+
+  const show = dataUrl => {
+    BG_CACHE[bg.id] = dataUrl;
+    imgEl.src = dataUrl;
+    stateEl.style.display = 'none';
+  };
+  const fail = msg => {
+    stateEl.textContent = msg;
+    stateEl.style.color = 'var(--danger)';
+  };
+
+  if (BG_CACHE[bg.id]) return show(BG_CACHE[bg.id]);
+  if (!bg.fileId) return fail('Bad Drive link in the Backgrounds sheet');
+
+  api('getBackground', { fileId: bg.fileId, width: 1600 })
+    .then(r => show(r.dataUrl))
+    .catch(e => { console.warn('Background failed:', bg.name, e.message); fail(e.message); });
+}
+
 function selectBg(bg, card){
+  const dataUrl = BG_CACHE[bg.id];
+  if (!dataUrl) return;                    // still loading or broken: ignore the tap
   document.querySelectorAll('.bg-card').forEach(x => x.classList.remove('selected'));
   card.classList.add('selected');
   state.bg = bg;
-  const img = new Image();
-  img.crossOrigin = 'anonymous';
-  img.src = bg.url;
-  img.onload = () => state.bgImg = img;
-  img.onerror = () => { console.warn('Background failed to load:', bg.url); state.bgImg = null; };
+  const img = new Image();                 // data URLs need no crossOrigin
+  img.onload  = () => state.bgImg = img;
+  img.onerror = () => state.bgImg = null;
+  img.src = dataUrl;
   document.getElementById('btnBgNext').disabled = false;
+
+  // Portrait vs landscape changes every layout, so rebuild the picker.
+  state.layout = null;
+  document.getElementById('btnLayoutNext').disabled = true;
+  buildLayoutCards();
 }
 function scrollCarousel(dir){
   const c = document.getElementById('bgCarousel');
@@ -475,14 +563,22 @@ function scrollCarousel(dir){
 buildLayoutCards();
 function buildLayoutCards(){
   const g = document.getElementById('layoutGrid');
+  const mode = orientation();
+  g.innerHTML = '';
+  g.style.gridTemplateColumns = 'repeat(' + LAYOUTS.length + ',1fr)';
   LAYOUTS.forEach(L => {
+    const G = geom(L, mode);
+    const sc = 210 / G.W;                       // preview is 210 units wide
+    const vbH = Math.round(G.H * sc);
     const card = document.createElement('div');
     card.className = 'layout-card';
-    const sc = 0.1;
-    let rects = L.slots.map(s =>
-      `<rect class="lslot" x="${s[0]*sc}" y="${s[1]*sc}" width="${s[2]*sc}" height="${s[3]*sc}" rx="4"/>`).join('');
+    const rects = G.slots.map(s =>
+      `<rect class="lslot" x="${(s[0]*sc).toFixed(1)}" y="${(s[1]*sc).toFixed(1)}" width="${(s[2]*sc).toFixed(1)}" height="${(s[3]*sc).toFixed(1)}" rx="4"/>`).join('');
+    const bgRect = G.bgSlot
+      ? `<rect class="lbgslot" x="${(G.bgSlot[0]*sc).toFixed(1)}" y="${(G.bgSlot[1]*sc).toFixed(1)}" width="${(G.bgSlot[2]*sc).toFixed(1)}" height="${(G.bgSlot[3]*sc).toFixed(1)}" rx="4"/>`
+      : '';
     card.innerHTML =
-      `<svg class="preview" viewBox="0 0 210 150"><rect class="lbg" x="1" y="1" width="208" height="148" rx="8"/>${rects}</svg>
+      `<svg class="preview" viewBox="0 0 210 ${vbH}"><rect class="lbg" x="1" y="1" width="208" height="${vbH-2}" rx="8"/>${bgRect}${rects}</svg>
        <div class="lname">${L.name}</div>`;
     card.onclick = () => {
       document.querySelectorAll('.layout-card').forEach(x => x.classList.remove('selected'));
@@ -492,6 +588,11 @@ function buildLayoutCards(){
     };
     g.appendChild(card);
   });
+  // Portrait cards are tall, so show fewer per row on a landscape screen.
+  if (mode === 'portrait' && window.innerWidth > 760)
+    g.style.gridTemplateColumns = 'repeat(' + LAYOUTS.length + ',minmax(0,1fr))';
+  document.getElementById('orientChip').textContent =
+    mode === 'portrait' ? 'Portrait print' : 'Landscape print';
 }
 
 /* ================= NAVIGATION ================= */
@@ -644,20 +745,34 @@ function containDraw(ctx, src, x, y, w, h, pad){
 }
 function renderPrint(){
   const cv = document.getElementById('printCanvas');
-  const ctx = cv.getContext('2d');
   const L = state.layout;
+  const G = geom(L);
 
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, 2100, 1500);
-  // Background is letterboxed (contain) so nothing gets cropped or zoomed in.
-  if (state.bgImg){
-    if (CFG.backgroundFit === 'cover') coverDraw(ctx, state.bgImg, 0, 0, 2100, 1500);
-    else containDraw(ctx, state.bgImg, 0, 0, 2100, 1500, '#ffffff');
+  cv.width = G.W;                      // resizing also clears the canvas
+  cv.height = G.H;
+  const ctx = cv.getContext('2d');
+
+  ctx.fillStyle = G.mat || '#ffffff';
+  ctx.fillRect(0, 0, G.W, G.H);
+
+  if (G.bgSlot){
+    // Collage style: the background is just another photo in its own cell.
+    const b = G.bgSlot;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(b[0] - 12, b[1] - 12, b[2] + 24, b[3] + 24);
+    if (state.bgImg){
+      if (CFG.backgroundFit === 'cover') coverDraw(ctx, state.bgImg, b[0], b[1], b[2], b[3]);
+      else containDraw(ctx, state.bgImg, b[0], b[1], b[2], b[3], '#ffffff');
+    }
+  } else if (state.bgImg){
+    // Full-bleed style: letterboxed (contain) so nothing gets cropped or zoomed in.
+    if (CFG.backgroundFit === 'cover') coverDraw(ctx, state.bgImg, 0, 0, G.W, G.H);
+    else containDraw(ctx, state.bgImg, 0, 0, G.W, G.H, '#ffffff');
   }
 
-  L.slots.forEach((s, i) => {
+  G.slots.forEach((s, i) => {
     if (!state.shots[i]) return;
-    if (L.polaroid){
+    if (G.polaroid){
       ctx.save();
       ctx.translate(s[0] + s[2]/2, s[1] + s[3]/2);
       ctx.rotate((i % 2 ? 1 : -1) * 0.05);
@@ -674,12 +789,18 @@ function renderPrint(){
     }
   });
 
-  const T = L.title;
+  const T = G.title;
   const caption = CFG.eventName || CFG.boothTitle;
   ctx.save();
-  ctx.fillStyle = '#ffffff';
-  ctx.strokeStyle = 'rgba(0,0,0,.55)';
-  ctx.lineWidth = 8;
+  if (G.mat){                                   // caption sits on a white mat
+    ctx.fillStyle = '#232A35';
+    ctx.strokeStyle = 'rgba(255,255,255,0)';
+    ctx.lineWidth = 0;
+  } else {                                      // caption sits over artwork
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = 'rgba(0,0,0,.55)';
+    ctx.lineWidth = 8;
+  }
   if (T.script){
     ctx.lineWidth = 5;
     ctx.shadowColor = 'rgba(0,0,0,.5)';
@@ -689,7 +810,7 @@ function renderPrint(){
     ctx.font = '800 ' + T.size + 'px "Avenir Next","Segoe UI",sans-serif';
   }
   ctx.textAlign = T.align;
-  ctx.strokeText(caption, T.x, T.y);
+  if (!G.mat) ctx.strokeText(caption, T.x, T.y);
   ctx.fillText(caption, T.x, T.y);
   ctx.restore();
 }
