@@ -457,6 +457,19 @@ const LAYOUTS = [
       bgSlot:[110,130,700,1000],
       slots:[[830,130,560,490],[830,640,560,490],[110,1150,630,680],[760,1150,630,680]],
       title:{x:750,y:1950,size:64,align:'center'} } },
+
+  { id:'diamond', name:'Diamond Mosaic',
+    /* Rotated squares. Coordinates are the BOUNDING BOX of each diamond;
+       the renderer clips to the rotated square inside it. Boxes overlap on
+       paper but the diamonds themselves only touch edge to edge. */
+    diamond:true, mat:'#FFFFFF',
+    bgSlot:[620,270,860,860],
+    slots:[[445,95,520,520],[1135,95,520,520],[445,785,520,520],[1135,785,520,520]],
+    title:{x:1050,y:1430,size:58,align:'center'},
+    portrait:{
+      bgSlot:[300,600,900,900],
+      slots:[[105,405,560,560],[835,405,560,560],[105,1135,560,560],[835,1135,560,560]],
+      title:{x:750,y:1960,size:64,align:'center'} } },
 ];
 
 /** Portrait when the chosen background says so, otherwise landscape. */
@@ -472,6 +485,7 @@ function geom(L, mode){
     slots: src.slots, title: src.title, polaroid: !!L.polaroid,
     bgSlot: src.bgSlot || null,
     mat: L.mat || null,
+    diamond: !!L.diamond,
   };
 }
 
@@ -527,14 +541,17 @@ function loadBgImage(bg, card){
   const fail = msg => {
     stateEl.textContent = msg;
     stateEl.style.color = 'var(--danger)';
+    console.warn('Background "' + bg.name + '" failed. url=' + bg.url +
+                 ' fileId=' + bg.fileId + ' → ' + msg);
   };
 
   if (BG_CACHE[bg.id]) return show(BG_CACHE[bg.id]);
-  if (!bg.fileId) return fail('Bad Drive link in the Backgrounds sheet');
 
-  api('getBackground', { fileId: bg.fileId, width: 1600 })
+  // Send the raw sheet URL too: if fileId is missing (old deployment, odd link
+  // format) the server can still work it out.
+  api('getBackground', { fileId: bg.fileId || '', url: bg.url || '', width: 1600 })
     .then(r => show(r.dataUrl))
-    .catch(e => { console.warn('Background failed:', bg.name, e.message); fail(e.message); });
+    .catch(e => fail(e.message));
 }
 
 function selectBg(bg, card){
@@ -572,13 +589,19 @@ function buildLayoutCards(){
     const vbH = Math.round(G.H * sc);
     const card = document.createElement('div');
     card.className = 'layout-card';
-    const rects = G.slots.map(s =>
-      `<rect class="lslot" x="${(s[0]*sc).toFixed(1)}" y="${(s[1]*sc).toFixed(1)}" width="${(s[2]*sc).toFixed(1)}" height="${(s[3]*sc).toFixed(1)}" rx="4"/>`).join('');
-    const bgRect = G.bgSlot
-      ? `<rect class="lbgslot" x="${(G.bgSlot[0]*sc).toFixed(1)}" y="${(G.bgSlot[1]*sc).toFixed(1)}" width="${(G.bgSlot[2]*sc).toFixed(1)}" height="${(G.bgSlot[3]*sc).toFixed(1)}" rx="4"/>`
-      : '';
+    const shape = (s, cls) => {
+      const x = s[0]*sc, y = s[1]*sc, w = s[2]*sc, h = s[3]*sc;
+      if (G.diamond){
+        const pts = [(x+w/2)+','+y, (x+w)+','+(y+h/2), (x+w/2)+','+(y+h), x+','+(y+h/2)]
+          .map(p => p.split(',').map(n => Number(n).toFixed(1)).join(',')).join(' ');
+        return `<polygon class="${cls}" points="${pts}"/>`;
+      }
+      return `<rect class="${cls}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${w.toFixed(1)}" height="${h.toFixed(1)}" rx="4"/>`;
+    };
+    const rects = G.slots.map(s => shape(s, 'lslot')).join('');
+    const bgRect = G.bgSlot ? shape(G.bgSlot, 'lbgslot') : '';
     card.innerHTML =
-      `<svg class="preview" viewBox="0 0 210 ${vbH}"><rect class="lbg" x="1" y="1" width="208" height="${vbH-2}" rx="8"/>${bgRect}${rects}</svg>
+      `<svg class="preview" viewBox="0 0 210 ${vbH}"><rect class="lbg" x="1" y="1" width="208" height="${vbH-2}" rx="8"/>${rects}${bgRect}</svg>
        <div class="lname">${L.name}</div>`;
     card.onclick = () => {
       document.querySelectorAll('.layout-card').forEach(x => x.classList.remove('selected'));
@@ -743,6 +766,34 @@ function containDraw(ctx, src, x, y, w, h, pad){
   if (pad){ ctx.fillStyle = pad; ctx.fillRect(x, y, w, h); }
   ctx.drawImage(src, x + (w - dw)/2, y + (h - dh)/2, dw, dh);
 }
+/* Traces a rotated square (diamond) inscribed in the box x,y,w,h. */
+function diamondPath(ctx, x, y, w, h){
+  ctx.beginPath();
+  ctx.moveTo(x + w/2, y);
+  ctx.lineTo(x + w,   y + h/2);
+  ctx.lineTo(x + w/2, y + h);
+  ctx.lineTo(x,       y + h/2);
+  ctx.closePath();
+}
+/* Fills a diamond with an image (cover), with a white keyline around it. */
+function diamondDraw(ctx, src, x, y, w, h, border){
+  border = border || 0;
+  if (border){
+    ctx.save();
+    diamondPath(ctx, x - border, y - border, w + border*2, h + border*2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.save();
+  diamondPath(ctx, x, y, w, h);
+  ctx.clip();
+  const sw = src.width || src.videoWidth, sh = src.height || src.videoHeight;
+  const s = Math.max(w / sw, h / sh);
+  ctx.drawImage(src, x + (w - sw*s)/2, y + (h - sh*s)/2, sw*s, sh*s);
+  ctx.restore();
+}
+
 function renderPrint(){
   const cv = document.getElementById('printCanvas');
   const L = state.layout;
@@ -755,7 +806,16 @@ function renderPrint(){
   ctx.fillStyle = G.mat || '#ffffff';
   ctx.fillRect(0, 0, G.W, G.H);
 
-  if (G.bgSlot){
+  if (G.diamond){
+    // Sides first, centre last so the big diamond stays crisp on top.
+    G.slots.forEach((s, i) => {
+      if (state.shots[i]) diamondDraw(ctx, state.shots[i], s[0], s[1], s[2], s[3], 14);
+    });
+    if (state.bgImg && G.bgSlot){
+      const b = G.bgSlot;
+      diamondDraw(ctx, state.bgImg, b[0], b[1], b[2], b[3], 16);
+    }
+  } else if (G.bgSlot){
     // Collage style: the background is just another photo in its own cell.
     const b = G.bgSlot;
     ctx.fillStyle = '#ffffff';
@@ -771,7 +831,7 @@ function renderPrint(){
   }
 
   G.slots.forEach((s, i) => {
-    if (!state.shots[i]) return;
+    if (!state.shots[i] || G.diamond) return;
     if (G.polaroid){
       ctx.save();
       ctx.translate(s[0] + s[2]/2, s[1] + s[3]/2);
