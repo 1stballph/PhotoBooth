@@ -3,6 +3,8 @@
 <head>
 <base target="_top">
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Aranas Studio Photo Booth</title>
 <style>
   /* ============ THEME — "Modern Studio" ============ */
   :root{
@@ -36,6 +38,7 @@
   .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:10px;flex-wrap:wrap}
   .brand{display:flex;align-items:center;gap:10px;font-size:22px;font-weight:700}
   .brand .icon{width:28px;height:28px;color:var(--primary)}
+  .brand .ev{display:block;font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.02em}
   .stepchip{
     display:flex;align-items:center;gap:8px;
     background:var(--surface);border:1px solid var(--line);border-radius:999px;
@@ -73,9 +76,10 @@
   .bg-card{
     flex:0 0 60%;scroll-snap-align:center;height:90%;
     border-radius:var(--radius);overflow:hidden;position:relative;
-    border:4px solid transparent;background:var(--surface);box-shadow:var(--shadow);
+    border:4px solid transparent;background:#EEF1F5;box-shadow:var(--shadow);
   }
-  .bg-card img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
+  /* contain = show the WHOLE background, never zoom/crop it */
+  .bg-card img{width:100%;height:100%;object-fit:contain;display:block;pointer-events:none;background:#EEF1F5}
   .bg-card .label{
     position:absolute;left:0;right:0;bottom:0;padding:14px 18px;
     background:linear-gradient(transparent,rgba(20,24,32,.72));
@@ -141,22 +145,29 @@
   }
   .modal-card h2{font-size:28px;margin-bottom:6px;display:flex;align-items:center;justify-content:center;gap:10px}
   .modal-card h2 .icon{color:var(--accent);width:30px;height:30px}
-  .price{font-size:50px;font-weight:800;color:var(--primary);margin:14px 0}
-  .paystatus{margin:14px 0;color:var(--muted);font-size:16px;min-height:22px;font-weight:600}
+  .paystatus{margin:12px 0;color:var(--muted);font-size:16px;min-height:22px;font-weight:600}
+  .paystatus.ok{color:var(--success)}
+  .paystatus.err{color:var(--danger)}
   .spinner{
     width:32px;height:32px;border:4px solid var(--line);border-top-color:var(--primary);
     border-radius:50%;margin:0 auto 10px;animation:spin 1s linear infinite;display:none;
   }
   @keyframes spin{to{transform:rotate(360deg)}}
-  .gcash-box{background:var(--bg);border:1px solid var(--line);border-radius:14px;
-    padding:14px 18px;margin:0 0 14px;text-align:left}
-  .gc-row{display:flex;justify-content:space-between;gap:12px;padding:6px 0;font-size:16px}
-  .gc-row span{color:var(--muted);font-weight:600}
-  .gc-row b{font-weight:800;color:var(--primary)}
-  .ref-input{width:100%;padding:14px;font-size:18px;font-weight:700;letter-spacing:1px;
-    text-align:center;border:2px solid var(--line);border-radius:12px;font-family:inherit;
-    color:var(--ink);outline:none;margin-bottom:12px}
-  .ref-input:focus{border-color:var(--primary)}
+  .pin-input{
+    width:100%;padding:16px;font-size:38px;font-weight:800;letter-spacing:.34em;
+    text-align:center;border:2px solid var(--line);border-radius:14px;font-family:inherit;
+    color:var(--primary);outline:none;margin:16px 0 4px;background:var(--bg);
+  }
+  .pin-input:focus{border-color:var(--primary)}
+  .pin-input.good{border-color:var(--success);color:var(--success)}
+  .pin-input.bad{border-color:var(--danger);color:var(--danger)}
+  .keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0 4px}
+  .keypad button{
+    padding:16px 0;font-size:24px;font-weight:800;font-family:inherit;cursor:pointer;
+    border:1px solid var(--line);border-radius:14px;background:var(--surface);color:var(--ink);
+  }
+  .keypad button:active{background:#EEF1F5}
+  .keypad button.wide{grid-column:span 1;font-size:16px;color:var(--muted)}
 
   /* ============ PREVIEW ============ */
   .preview-body{flex:1;display:flex;align-items:center;justify-content:center;min-height:0}
@@ -191,6 +202,7 @@
     .btn{font-size:16px;padding:12px 20px}
     #countdown{font-size:110px}
     #printCanvas{max-width:100%}
+    .pin-input{font-size:30px}
   }
 </style>
 </head>
@@ -206,7 +218,7 @@
     <g id="i-check"><path d="M20 6L9 17l-5-5"/></g>
     <g id="i-image"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></g>
     <g id="i-grid"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></g>
-    <g id="i-card"><rect x="1" y="4" width="22" height="16" rx="3"/><path d="M1 10h22"/></g>
+    <g id="i-key"><circle cx="8" cy="15" r="5"/><path d="M11.5 11.5L21 2l1 3 3 1"/></g>
     <g id="i-spark"><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"/></g>
     <g id="i-phone"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></g>
   </defs>
@@ -215,7 +227,8 @@
 <!-- ============ SCREEN 1: DASHBOARD — BACKGROUND ============ -->
 <div class="screen active" id="scrBg">
   <div class="topbar">
-    <div class="brand"><svg class="icon"><use href="#i-camera"/></svg><span id="evName1">Photo Booth</span></div>
+    <div class="brand"><svg class="icon"><use href="#i-camera"/></svg>
+      <div><span class="bt">Aranas Studio Photo Booth</span><span class="ev evName"></span></div></div>
     <div class="stepchip"><svg class="icon"><use href="#i-image"/></svg>Step 1 · Background</div>
   </div>
   <div class="carousel-wrap">
@@ -235,7 +248,8 @@
 <!-- ============ SCREEN 2: LAYOUT ============ -->
 <div class="screen" id="scrLayout">
   <div class="topbar">
-    <div class="brand"><svg class="icon"><use href="#i-camera"/></svg><span id="evName2">Photo Booth</span></div>
+    <div class="brand"><svg class="icon"><use href="#i-camera"/></svg>
+      <div><span class="bt">Aranas Studio Photo Booth</span><span class="ev evName"></span></div></div>
     <div class="stepchip"><svg class="icon"><use href="#i-grid"/></svg>Step 2 · Layout (4 shots)</div>
   </div>
   <div class="layout-grid" id="layoutGrid"></div>
@@ -252,7 +266,8 @@
 <!-- ============ SCREEN 3: CAPTURE ============ -->
 <div class="screen" id="scrCapture">
   <div class="topbar">
-    <div class="brand"><svg class="icon"><use href="#i-camera"/></svg><span id="evName3">Photo Booth</span></div>
+    <div class="brand"><svg class="icon"><use href="#i-camera"/></svg>
+      <div><span class="bt">Aranas Studio Photo Booth</span><span class="ev evName"></span></div></div>
     <div class="stepchip"><svg class="icon"><use href="#i-spark"/></svg>Step 3 · Press 1, then 2, 3, 4</div>
   </div>
   <div class="cap-body">
@@ -275,16 +290,17 @@
   <div class="thumbs" id="thumbs"></div>
 </div>
 
-<!-- ============ SCREEN 4: OUTPUT PREVIEW → CHECKOUT ============ -->
+<!-- ============ SCREEN 4: OUTPUT PREVIEW → PIN ============ -->
 <div class="screen" id="scrPreview">
   <div class="topbar">
-    <div class="brand"><svg class="icon"><use href="#i-camera"/></svg><span id="evName4">Photo Booth</span></div>
+    <div class="brand"><svg class="icon"><use href="#i-camera"/></svg>
+      <div><span class="bt">Aranas Studio Photo Booth</span><span class="ev evName"></span></div></div>
     <div class="stepchip"><svg class="icon"><use href="#i-image"/></svg>Your photo · looking good!</div>
   </div>
   <div class="preview-body"><canvas id="printCanvas" width="2100" height="1500"></canvas></div>
   <div class="preview-actions">
-    <button class="btn" onclick="openCheckout()">
-      <svg class="icon"><use href="#i-card"/></svg> Checkout
+    <button class="btn" onclick="openPinModal()">
+      <svg class="icon"><use href="#i-key"/></svg> Enter PIN &amp; save
     </button>
     <button class="btn secondary" onclick="resetBooth()">
       <svg class="icon"><use href="#i-home"/></svg> Home
@@ -295,19 +311,20 @@
 <!-- ============ SCREEN 5: QR + PIN RESULT ============ -->
 <div class="screen" id="scrQR">
   <div class="topbar">
-    <div class="brand"><svg class="icon"><use href="#i-camera"/></svg><span id="evName5">Photo Booth</span></div>
-    <div class="stepchip"><svg class="icon" style="color:var(--success)"><use href="#i-check"/></svg>Paid · Photos ready</div>
+    <div class="brand"><svg class="icon"><use href="#i-camera"/></svg>
+      <div><span class="bt">Aranas Studio Photo Booth</span><span class="ev evName"></span></div></div>
+    <div class="stepchip"><svg class="icon" style="color:var(--success)"><use href="#i-check"/></svg>Photos ready</div>
   </div>
   <div class="qr-body">
     <div class="qr-card">
-      <h2><svg class="icon"><use href="#i-check"/></svg> Payment confirmed!</h2>
+      <h2><svg class="icon"><use href="#i-check"/></svg> Your photos are saved!</h2>
       <p class="note" id="thankYouMsg" style="font-size:17px;color:var(--ink)"></p>
       <img id="qrImg" alt="QR code">
       <div class="pinbox" id="pinBox"></div>
       <p class="note">
         <svg class="icon"><use href="#i-phone"/></svg>
-        Scan the QR code with your phone and use the PIN to view and download
-        your pictures. The same PIN works on many phones — share with your barkada!
+        Scan the QR code with your phone, then type this same PIN to view and
+        download your pictures. It works on many phones — share with your barkada!
       </p>
       <div style="margin-top:20px">
         <button class="btn success" onclick="resetBooth()">
@@ -318,26 +335,28 @@
   </div>
 </div>
 
-<!-- ============ CHECKOUT MODAL — GCASH ============ -->
-<div class="modal" id="payModal">
+<!-- ============ PIN MODAL (replaces GCash checkout) ============ -->
+<div class="modal" id="pinModal">
   <div class="modal-card">
-    <h2><svg class="icon"><use href="#i-spark"/></svg> Pay with GCash</h2>
-    <p style="color:var(--muted);font-weight:600">Send the amount below, then enter your GCash reference number</p>
-    <div class="price" id="payPrice">₱150.00</div>
-    <div class="gcash-box">
-      <div class="gc-row"><span>GCash Number</span><b id="gcNumber">—</b></div>
-      <div class="gc-row"><span>Account Name</span><b id="gcName">—</b></div>
-    </div>
-    <input id="refInput" class="ref-input" maxlength="20" autocomplete="off"
-           placeholder="GCash Ref No. (e.g. 9012345678901)">
+    <h2><svg class="icon"><use href="#i-key"/></svg> Enter your PIN</h2>
+    <p style="color:var(--muted);font-weight:600" id="pinHint">
+      Enter the 6-digit PIN printed on your slip.
+    </p>
+
+    <input id="pinInput" class="pin-input" inputmode="numeric" maxlength="6"
+           autocomplete="off" placeholder="000000" oninput="onPinInput()">
+
+    <div class="keypad" id="keypad"></div>
+
     <div class="spinner" id="paySpinner"></div>
     <div class="paystatus" id="payStatus"></div>
-    <button class="btn success" id="btnPay" onclick="confirmGcash()">
-      <svg class="icon"><use href="#i-check"/></svg> Confirm Payment
+
+    <button class="btn success" id="btnPin" disabled onclick="submitPin()">
+      <svg class="icon"><use href="#i-check"/></svg> Save my photos
     </button>
     <div style="margin-top:14px">
-      <button class="btn secondary" onclick="goHomeFromModal()">
-        <svg class="icon"><use href="#i-home"/></svg> Home
+      <button class="btn secondary" onclick="closePinModal()">
+        <svg class="icon"><use href="#i-left"/></svg> Back to preview
       </button>
     </div>
   </div>
@@ -369,8 +388,13 @@ async function api(action, payload){
 }
 
 /* ================= STATE ================= */
-let CFG = { backgrounds: [], eventName: 'Photo Booth', priceCentavos: 15000, currency: 'PHP', countdown: 10 };
-let state = { bg: null, bgImg: null, layout: null, shots: [null,null,null,null], next: 0, sessionId: null, saving: false };
+let CFG = {
+  backgrounds: [], boothTitle: 'Aranas Studio Photo Booth', eventName: '',
+  countdown: 10, pinInstructions: 'Enter the 6-digit PIN printed on your slip.',
+  backgroundFit: 'contain'
+};
+let state = { bg:null, bgImg:null, layout:null, shots:[null,null,null,null], next:0,
+              sessionId:null, saving:false, pinOk:false };
 let stream = null;
 
 /* ================= 5 LAYOUTS (2100x1500 = 5R LANDSCAPE @300dpi) ================= */
@@ -379,7 +403,6 @@ const LAYOUTS = [
     slots:[[110,90,920,610],[1070,90,920,610],[110,730,920,610],[1070,730,920,610]],
     title:{x:1050,y:1448,size:64,align:'center'} },
   { id:'mosaic', name:'Photo Mosaic',
-    /* Shot 1 fills the BIG panel; shots 2-4 fill the smaller cells */
     slots:[[740,520,1280,810],[80,80,620,1250],[740,80,620,400],[1400,80,620,400]],
     title:{x:1050,y:1444,size:52,align:'center'} },
   { id:'film',   name:'Filmstrip Stack',
@@ -389,8 +412,6 @@ const LAYOUTS = [
     slots:[[90,90,1220,1230],[1360,90,650,430],[1360,550,650,430],[1360,1010,650,400]],
     title:{x:700,y:1430,size:64,align:'center'} },
   { id:'collage', name:'Wedding Collage',
-    /* Background fills the whole photo; 4 tilted polaroids cascade
-       down the left side; script-style event name at lower right */
     slots:[[150,30,340,340],[270,370,340,340],[150,710,340,340],[270,1050,340,340]],
     title:{x:1400,y:1200,size:110,align:'center',script:true}, polaroid:true },
 ];
@@ -398,13 +419,11 @@ const LAYOUTS = [
 /* ================= INIT ================= */
 api('getConfig')
   .then(cfg => {
-    CFG = cfg;
-    ['evName1','evName2','evName3','evName4','evName5'].forEach(id =>
-      document.getElementById(id).textContent = cfg.eventName);
-    document.getElementById('payPrice').textContent =
-      (cfg.currency === 'PHP' ? '₱' : cfg.currency + ' ') + (cfg.priceCentavos/100).toFixed(2);
-    document.getElementById('gcNumber').textContent = cfg.gcashNumber || '—';
-    document.getElementById('gcName').textContent = cfg.gcashName || '—';
+    CFG = Object.assign(CFG, cfg);
+    document.title = CFG.boothTitle;
+    document.querySelectorAll('.brand .bt').forEach(el => el.textContent = CFG.boothTitle);
+    document.querySelectorAll('.evName').forEach(el => el.textContent = CFG.eventName || '');
+    document.getElementById('pinHint').textContent = CFG.pinInstructions;
     buildCarousel();
   })
   .catch(err => {
@@ -481,11 +500,7 @@ function go(id){
   document.getElementById(id).classList.add('active');
 }
 
-/* ================= CAMERA =================
- * Apps Script blocks getUserMedia (live camera) inside its iframe.
- * Plan A: try live camera anyway (works if HTML is hosted elsewhere).
- * Plan B: NATIVE MODE - pressing 1-4 opens the device's camera app
- *         via <input capture>; the photo flows into the same pipeline. */
+/* ================= CAMERA ================= */
 let nativeMode = false;
 let nativeShotIndex = -1;
 
@@ -509,7 +524,6 @@ async function startCamera(){
       }catch(e){ console.warn('getUserMedia attempt failed:', e.name, e.message); }
     }
   }
-  // Live camera blocked -> switch to native device camera mode
   enableNativeMode();
 }
 function enableNativeMode(){
@@ -521,12 +535,9 @@ function showCamHelp(msg){
   document.getElementById('camHelpMsg').textContent = msg;
   document.getElementById('camHelp').style.display = 'grid';
 }
-function hideCamHelp(){
-  document.getElementById('camHelp').style.display = 'none';
-}
-function camHelpOk(){
-  hideCamHelp();
-}
+function hideCamHelp(){ document.getElementById('camHelp').style.display = 'none'; }
+function camHelpOk(){ hideCamHelp(); }
+
 function buildShotButtons(){
   const wrap = document.getElementById('shotButtons');
   wrap.innerHTML = '';
@@ -544,7 +555,6 @@ function buildShotButtons(){
 }
 function countdownAndCapture(i){
   if (nativeMode){
-    // Native mode: open the device camera app for this shot
     nativeShotIndex = i;
     document.getElementById('nativeCam').click();
     return;
@@ -602,7 +612,6 @@ function finishCapture(i, c){
   if (state.next < 4){
     document.getElementById('shot' + state.next).classList.add('ready');
   } else {
-    // All 4 done: show the composed OUTPUT first, then user taps Checkout
     try {
       renderPrint();
     } catch(e) {
@@ -615,6 +624,7 @@ function finishCapture(i, c){
 }
 
 /* ================= COMPOSE OUTPUT (5R canvas) ================= */
+/* Fills the box, cropping the edges — used for the PHOTO SLOTS. */
 function coverDraw(ctx, src, x, y, w, h){
   const sw = src.width || src.videoWidth, sh = src.height || src.videoHeight;
   const s = Math.max(w / sw, h / sh);
@@ -624,6 +634,14 @@ function coverDraw(ctx, src, x, y, w, h){
   ctx.drawImage(src, x + (w - dw)/2, y + (h - dh)/2, dw, dh);
   ctx.restore();
 }
+/* Shows the WHOLE image, letterboxed — used for the BACKGROUND so it is never zoomed. */
+function containDraw(ctx, src, x, y, w, h, pad){
+  const sw = src.width || src.videoWidth, sh = src.height || src.videoHeight;
+  const s = Math.min(w / sw, h / sh);
+  const dw = sw * s, dh = sh * s;
+  if (pad){ ctx.fillStyle = pad; ctx.fillRect(x, y, w, h); }
+  ctx.drawImage(src, x + (w - dw)/2, y + (h - dh)/2, dw, dh);
+}
 function renderPrint(){
   const cv = document.getElementById('printCanvas');
   const ctx = cv.getContext('2d');
@@ -631,7 +649,11 @@ function renderPrint(){
 
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, 2100, 1500);
-  if (state.bgImg) coverDraw(ctx, state.bgImg, 0, 0, 2100, 1500);
+  // Background is letterboxed (contain) so nothing gets cropped or zoomed in.
+  if (state.bgImg){
+    if (CFG.backgroundFit === 'cover') coverDraw(ctx, state.bgImg, 0, 0, 2100, 1500);
+    else containDraw(ctx, state.bgImg, 0, 0, 2100, 1500, '#ffffff');
+  }
 
   L.slots.forEach((s, i) => {
     if (!state.shots[i]) return;
@@ -653,6 +675,7 @@ function renderPrint(){
   });
 
   const T = L.title;
+  const caption = CFG.eventName || CFG.boothTitle;
   ctx.save();
   ctx.fillStyle = '#ffffff';
   ctx.strokeStyle = 'rgba(0,0,0,.55)';
@@ -666,33 +689,73 @@ function renderPrint(){
     ctx.font = '800 ' + T.size + 'px "Avenir Next","Segoe UI",sans-serif';
   }
   ctx.textAlign = T.align;
-  if (T.vertical){
-    ctx.translate(T.x, T.y); ctx.rotate(-Math.PI/2);
-    ctx.strokeText(CFG.eventName, 0, 0); ctx.fillText(CFG.eventName, 0, 0);
-  } else {
-    ctx.strokeText(CFG.eventName, T.x, T.y); ctx.fillText(CFG.eventName, T.x, T.y);
-  }
+  ctx.strokeText(caption, T.x, T.y);
+  ctx.fillText(caption, T.x, T.y);
   ctx.restore();
 }
 
-/* ================= CHECKOUT — GCASH ================= */
-function openCheckout(){
-  document.getElementById('refInput').value = '';
-  setPayStatus('', false);
-  document.getElementById('btnPay').disabled = false;
-  document.getElementById('payModal').classList.add('open');
+/* ================= PIN ENTRY (replaces GCash checkout) ================= */
+buildKeypad();
+function buildKeypad(){
+  const k = document.getElementById('keypad');
+  ['1','2','3','4','5','6','7','8','9','clear','0','del'].forEach(key => {
+    const b = document.createElement('button');
+    if (key === 'clear'){ b.textContent = 'Clear'; b.className = 'wide'; b.onclick = () => setPin(''); }
+    else if (key === 'del'){ b.textContent = '⌫'; b.className = 'wide';
+      b.onclick = () => setPin(document.getElementById('pinInput').value.slice(0, -1)); }
+    else b.onclick = () => setPin(document.getElementById('pinInput').value + key), b.textContent = key;
+    k.appendChild(b);
+  });
 }
-function confirmGcash(){
-  const ref = document.getElementById('refInput').value.replace(/\s+/g, '');
-  if (ref.length < 8){
-    setPayStatus('Please enter the reference number from your GCash receipt.', false);
-    return;
-  }
+function setPin(v){
+  document.getElementById('pinInput').value = String(v).replace(/\D/g, '').slice(0, 6);
+  onPinInput();
+}
+function openPinModal(){
+  setPin('');
+  setPayStatus('', false);
+  state.pinOk = false;
+  document.getElementById('btnPin').disabled = true;
+  document.getElementById('pinModal').classList.add('open');
+  document.getElementById('pinInput').focus();
+}
+function closePinModal(){
+  document.getElementById('pinModal').classList.remove('open');
+}
+
+let pinCheckTimer = null;
+function onPinInput(){
+  const el = document.getElementById('pinInput');
+  el.value = el.value.replace(/\D/g, '').slice(0, 6);
+  el.className = 'pin-input';
+  state.pinOk = false;
+  document.getElementById('btnPin').disabled = true;
+
+  clearTimeout(pinCheckTimer);
+  if (el.value.length < 6){ setPayStatus('', false); return; }
+
+  setPayStatus('Checking PIN…', true);
+  pinCheckTimer = setTimeout(() => {
+    api('checkPin', { pin: el.value })
+      .then(r => {
+        if (document.getElementById('pinInput').value !== r.pin) return;  // typed on
+        state.pinOk = !!r.claimable;
+        el.className = 'pin-input ' + (r.claimable ? 'good' : 'bad');
+        setPayStatus(r.message, false, r.claimable ? 'ok' : 'err');
+        document.getElementById('btnPin').disabled = !r.claimable;
+      })
+      .catch(e => setPayStatus(e.message, false, 'err'));
+  }, 250);
+}
+
+function submitPin(){
+  const pin = document.getElementById('pinInput').value;
+  if (pin.length !== 6 || !state.pinOk) return;
   if (state.saving) return;
   state.saving = true;
   state.sessionId = state.sessionId || ('PB-' + Date.now());
-  document.getElementById('btnPay').disabled = true;
-  setPayStatus('Confirming payment and saving your photos…', true);
+  document.getElementById('btnPin').disabled = true;
+  setPayStatus('Saving your photos…', true);
 
   const shotToJpeg = c => c.toDataURL('image/jpeg', 0.85);
   const images = [
@@ -703,15 +766,15 @@ function confirmGcash(){
     { label: 'Shot 4', dataUrl: shotToJpeg(state.shots[3]) },
   ];
 
-  api('confirmGcash', {
+  api('savePhotos', {
       sessionId: state.sessionId,
       layoutName: state.layout.name,
-      refNo: ref,
+      pin: pin,
       images: images
     })
     .then(res => {
       state.saving = false;
-      document.getElementById('payModal').classList.remove('open');
+      closePinModal();
       // Build the download link from THIS site's own URL (GitHub Pages)
       const base = window.location.href.replace(/index\.html?(\?.*)?$/i, '').replace(/\?.*$/, '');
       const url = base + 'download.html?pin=' + res.pin;
@@ -719,17 +782,15 @@ function confirmGcash(){
     })
     .catch(err => {
       state.saving = false;
-      setPayStatus(err.message, false);
-      document.getElementById('btnPay').disabled = false;
+      setPayStatus(err.message, false, 'err');
+      document.getElementById('btnPin').disabled = false;
     });
 }
-function setPayStatus(msg, spinning){
-  document.getElementById('payStatus').textContent = msg;
+function setPayStatus(msg, spinning, cls){
+  const el = document.getElementById('payStatus');
+  el.textContent = msg || '';
+  el.className = 'paystatus ' + (cls || '');
   document.getElementById('paySpinner').style.display = spinning ? 'block' : 'none';
-}
-function goHomeFromModal(){
-  document.getElementById('payModal').classList.remove('open');
-  resetBooth();
 }
 
 /* ================= QR + PIN + THANK YOU ================= */
@@ -753,11 +814,12 @@ function stopCamera(){
 }
 function resetBooth(){
   stopCamera();
-  state = { bg:null, bgImg:null, layout:null, shots:[null,null,null,null], next:0, sessionId:null, saving:false };
+  closePinModal();
+  state = { bg:null, bgImg:null, layout:null, shots:[null,null,null,null], next:0,
+            sessionId:null, saving:false, pinOk:false };
   document.querySelectorAll('.bg-card,.layout-card').forEach(x => x.classList.remove('selected'));
   document.getElementById('btnBgNext').disabled = true;
   document.getElementById('btnLayoutNext').disabled = true;
-  document.getElementById('btnPay').disabled = false;
   setPayStatus('', false);
   go('scrBg');
 }
