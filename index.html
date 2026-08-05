@@ -392,6 +392,9 @@ async function api(action, payload){
   return j.data;
 }
 
+/* The Apps Script deployment must be at least this version. */
+const NEEDS_API_VERSION = 5;
+
 /* ================= STATE ================= */
 let CFG = {
   backgrounds: [], boothTitle: 'Aranas Studio Photo Booth', eventName: '',
@@ -497,6 +500,17 @@ api('getConfig')
     document.querySelectorAll('.brand .bt').forEach(el => el.textContent = CFG.boothTitle);
     document.querySelectorAll('.evName').forEach(el => el.textContent = CFG.eventName || '');
     document.getElementById('pinHint').textContent = CFG.pinInstructions;
+
+    // Catch the classic "edited the script but never redeployed" case.
+    if ((Number(CFG.apiVersion) || 0) < NEEDS_API_VERSION){
+      const b = document.createElement('div');
+      b.style.cssText = 'background:#FDECEA;border:1px solid #E5484D;color:#B42318;' +
+        'padding:10px 14px;border-radius:12px;font-weight:700;font-size:14px;margin-bottom:10px';
+      b.textContent = 'Apps Script is running old code (v' + (CFG.apiVersion || '?') +
+        ', this page needs v' + NEEDS_API_VERSION + '). In Apps Script: Deploy → ' +
+        'Manage deployments → edit → Version: New version → Deploy.';
+      document.getElementById('scrBg').prepend(b);
+    }
     buildCarousel();
   })
   .catch(err => {
@@ -561,32 +575,55 @@ function loadBgImage(bg, card){
     }
     show('data:' + prep.mimeType + ';base64,' + b64);
   })().catch(e => {
-    // Last resort: let the browser load it straight from Drive. Good enough to
-    // show in the carousel; the canvas may refuse it, and renderPrint already
-    // falls back to a plain white background if that happens.
-    if (bg.fileId){
-      console.warn('Chunked load failed, trying direct Drive URL:', e.message);
-      const direct = 'https://drive.google.com/thumbnail?id=' + bg.fileId + '&sz=w1400';
-      imgEl.crossOrigin = 'anonymous';
-      imgEl.onload  = () => { BG_CACHE[bg.id] = direct; stateEl.style.display = 'none'; };
-      imgEl.onerror = () => fail(e.message);
-      imgEl.src = direct;
-    } else {
-      fail(e.message);
-    }
+    // Fallback chain. lh3.googleusercontent.com usually allows cross-origin
+    // reads; drive.google.com/thumbnail never does, so it is display-only.
+    if (!bg.fileId) return fail(e.message);
+    console.warn('Chunked load failed for "' + bg.name + '":', e.message);
+
+    const corsUrl   = 'https://lh3.googleusercontent.com/d/' + bg.fileId + '=w1400';
+    const plainUrl  = 'https://drive.google.com/thumbnail?id=' + bg.fileId + '&sz=w1400';
+
+    const tryUrl = (url, useCors, next) => {
+      const probe = new Image();
+      if (useCors) probe.crossOrigin = 'anonymous';
+      probe.onload = () => {
+        BG_CACHE[bg.id] = url;
+        imgEl.src = url;
+        stateEl.style.display = 'none';
+        if (!useCors) console.warn('"' + bg.name + '" loaded display-only; ' +
+          'the printed composite may drop the background.');
+      };
+      probe.onerror = () => next ? next() : fail(e.message);
+      probe.src = url;
+    };
+
+    progress('Retrying…');
+    tryUrl(corsUrl, true,                       // 1. cross-origin safe, canvas OK
+      () => tryUrl(corsUrl, false,              // 2. same host, display only
+        () => tryUrl(plainUrl, false, null)));  // 3. Drive thumbnail, display only
   });
 }
 
 function selectBg(bg, card){
-  const dataUrl = BG_CACHE[bg.id];
-  if (!dataUrl) return;                    // still loading or broken: ignore the tap
+  const src = BG_CACHE[bg.id];
+  if (!src) return;                        // still loading or broken: ignore the tap
   document.querySelectorAll('.bg-card').forEach(x => x.classList.remove('selected'));
   card.classList.add('selected');
   state.bg = bg;
-  const img = new Image();                 // data URLs need no crossOrigin
-  img.onload  = () => state.bgImg = img;
-  img.onerror = () => state.bgImg = null;
-  img.src = dataUrl;
+
+  // Data URLs are always canvas-safe. A remote fallback URL needs crossOrigin,
+  // and if that is refused we keep the image for display but drop it from the
+  // print so the composite still renders.
+  const load = (useCors, onFail) => {
+    const img = new Image();
+    if (useCors) img.crossOrigin = 'anonymous';
+    img.onload  = () => state.bgImg = img;
+    img.onerror = () => onFail ? onFail() : (state.bgImg = null);
+    img.src = src;
+  };
+  if (src.indexOf('data:') === 0) load(false);
+  else load(true, () => { state.bgImg = null; });
+
   document.getElementById('btnBgNext').disabled = false;
 
   // Portrait vs landscape changes every layout, so rebuild the picker.
