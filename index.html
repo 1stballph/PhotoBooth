@@ -538,7 +538,9 @@ function loadBgImage(bg, card){
     imgEl.src = dataUrl;
     stateEl.style.display = 'none';
   };
+  const progress = txt => { stateEl.textContent = txt; stateEl.style.color = 'var(--muted)'; };
   const fail = msg => {
+    stateEl.style.display = 'grid';
     stateEl.textContent = msg;
     stateEl.style.color = 'var(--danger)';
     console.warn('Background "' + bg.name + '" failed. url=' + bg.url +
@@ -547,11 +549,32 @@ function loadBgImage(bg, card){
 
   if (BG_CACHE[bg.id]) return show(BG_CACHE[bg.id]);
 
-  // Send the raw sheet URL too: if fileId is missing (old deployment, odd link
-  // format) the server can still work it out.
-  api('getBackground', { fileId: bg.fileId || '', url: bg.url || '', width: 1600 })
-    .then(r => show(r.dataUrl))
-    .catch(e => fail(e.message));
+  // Apps Script cannot return a multi-MB response, so pull it in pieces.
+  (async () => {
+    const prep = await api('prepareBackground',
+      { fileId: bg.fileId || '', url: bg.url || '', width: 1400 });
+    let b64 = '';
+    for (let i = 0; i < prep.chunks; i++){
+      const part = await api('getBackgroundChunk', { token: prep.token, index: i });
+      b64 += part.data;
+      progress('Loading… ' + Math.round(((i + 1) / prep.chunks) * 100) + '%');
+    }
+    show('data:' + prep.mimeType + ';base64,' + b64);
+  })().catch(e => {
+    // Last resort: let the browser load it straight from Drive. Good enough to
+    // show in the carousel; the canvas may refuse it, and renderPrint already
+    // falls back to a plain white background if that happens.
+    if (bg.fileId){
+      console.warn('Chunked load failed, trying direct Drive URL:', e.message);
+      const direct = 'https://drive.google.com/thumbnail?id=' + bg.fileId + '&sz=w1400';
+      imgEl.crossOrigin = 'anonymous';
+      imgEl.onload  = () => { BG_CACHE[bg.id] = direct; stateEl.style.display = 'none'; };
+      imgEl.onerror = () => fail(e.message);
+      imgEl.src = direct;
+    } else {
+      fail(e.message);
+    }
+  });
 }
 
 function selectBg(bg, card){
@@ -939,8 +962,19 @@ function submitPin(){
   setPayStatus('Saving your photos…', true);
 
   const shotToJpeg = c => c.toDataURL('image/jpeg', 0.85);
+  let compositeUrl;
+  try {
+    compositeUrl = document.getElementById('printCanvas').toDataURL('image/jpeg', 0.9);
+  } catch (err) {
+    // A background loaded straight from Drive can taint the canvas. Redraw
+    // without it rather than losing the customer's photos.
+    console.warn('Canvas is tainted, re-rendering without the background:', err.message);
+    state.bgImg = null;
+    renderPrint();
+    compositeUrl = document.getElementById('printCanvas').toDataURL('image/jpeg', 0.9);
+  }
   const images = [
-    { label: 'Layout with background', dataUrl: document.getElementById('printCanvas').toDataURL('image/jpeg', 0.9) },
+    { label: 'Layout with background', dataUrl: compositeUrl },
     { label: 'Shot 1', dataUrl: shotToJpeg(state.shots[0]) },
     { label: 'Shot 2', dataUrl: shotToJpeg(state.shots[1]) },
     { label: 'Shot 3', dataUrl: shotToJpeg(state.shots[2]) },
